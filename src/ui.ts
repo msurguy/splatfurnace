@@ -21,7 +21,7 @@ export const FIELDS: Field[] = [
 
   { advanced: true, kind: 'range', name: 'iso', label: 'Density threshold', tip: 'Where the surface sits in the splat cloud. Lower inflates, higher erodes.|iso', min: 0.05, max: 1, step: 0.01 },
   { advanced: true, kind: 'range', name: 'minSigma', label: 'Min splat width', tip: 'Widens tiny splats so they still contribute to the surface.|minSigma, voxels', min: 0.3, max: 2, step: 0.05 },
-  { advanced: true, kind: 'range', name: 'opacityThreshold', label: 'Opacity cutoff', tip: 'Ignore splats fainter than this. Removes haze and floaters.|opacityThreshold', min: 0, max: 0.5, step: 0.01 },
+  { advanced: true, kind: 'range', name: 'opacityThreshold', label: 'Opacity cutoff', tip: 'Ignore splats fainter than this. Raising it removes haze, but can open holes where faint splats stack into a surface.|opacityThreshold', min: 0, max: 0.2, step: 0.001 },
   { advanced: true, kind: 'switch', name: 'fillCavities', label: 'Seal interior cavities', tip: 'Fills hidden pockets inside the object so the mesh is one clean shell.|fillCavities' },
   { advanced: true, kind: 'range', name: 'islandFraction', label: 'Remove small pieces', tip: 'Drops loose fragments smaller than this share of the largest piece.|islandFraction', min: 0, max: 0.1, step: 0.005, ...pct },
   { advanced: true, kind: 'range', name: 'smoothing', label: 'Smoothing', tip: 'Passes of crease-preserving smoothing before snapping.|Taubin iterations', min: 0, max: 10, step: 1 },

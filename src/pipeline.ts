@@ -26,7 +26,10 @@ export const DEFAULTS: Settings = {
   resolution: 320,
   iso: 0.2,
   minSigma: 0.6,
-  opacityThreshold: 0.05,
+  // About 1/255, the renderer's own cutoff. Splats only count in proportion to their opacity, so
+  // faint ones matter only where they stack up, which is exactly where captures use them as
+  // the visible surface (the idol's dark jacket back is made of 0.01-0.05 splats).
+  opacityThreshold: 0.004,
   fillCavities: true,
   islandFraction: 0.01,
   smoothing: 3,
@@ -53,6 +56,7 @@ export interface Result {
 
 const BUCKET = 4; // voxels per spatial bucket edge
 const MAX_EXTENT = 48; // voxels; larger splats are treated as background
+const BOUNDS_OPACITY = 0.05; // grid bounds come from clearly visible splats, so faint haze can't stretch them
 
 export async function convert(gpu: Gpu, splats: Splats, s: Settings, log: (m: string) => void, env: Env): Promise<Result> {
   const stats: Record<string, number | string> = {};
@@ -65,7 +69,7 @@ export async function convert(gpu: Gpu, splats: Splats, s: Settings, log: (m: st
   };
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  const grid = computeGrid(splats, { resolution: s.resolution, opacityThreshold: s.opacityThreshold, outlierPercentile: 0.2, maxCells: gpu.maxBinding / 4 });
+  const grid = computeGrid(splats, { resolution: s.resolution, opacityThreshold: Math.max(s.opacityThreshold, BOUNDS_OPACITY), outlierPercentile: 0.2, maxCells: gpu.maxBinding / 4 });
   const packed = packSplats(splats, grid, s.opacityThreshold);
   const buckets = buildBuckets(packed.data, packed.count, grid, BUCKET, MAX_EXTENT);
   stats.splats = packed.count;

@@ -34,7 +34,7 @@ Quality
       --texture-size <n>    texture size in texels (power of two)
       --iso <x>             density level of the surface
       --min-sigma <x>       smallest splat radius, in voxels
-      --opacity-threshold <x>  ignore splats below this opacity
+      --opacity-threshold <x>  ignore splats below this opacity (default 0.004)
       --island-fraction <x> drop pieces smaller than this fraction of the largest (0..1)
       --smoothing <n>       Taubin smoothing iterations
       --max-snap <x>        furthest a vertex may snap, in voxels
