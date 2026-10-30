@@ -1,0 +1,320 @@
+--- a/xatlas.cpp	2026-10-30 11:05:22
++++ b/xatlas.cpp	2026-10-30 11:17:02
+@@ -40,7 +40,10 @@
+ #if XATLAS_C_API
+ #include "xatlas_c.h"
+ #endif
++#include <algorithm> // splat2mesh: std::sort
+ #include <atomic>
++#include <queue> // splat2mesh: chart growth heap
++#include <unordered_map> // splat2mesh: failed chart merges
+ #include <condition_variable>
+ #include <mutex>
+ #include <thread>
+@@ -68,6 +71,10 @@
+ #include <chrono>
+ #endif
+ 
++#ifndef XA_GRID_CELLS_PER_EDGE
++#define XA_GRID_CELLS_PER_EDGE 2 // splat2mesh: see UniformGrid2::createGrid
++#endif
++
+ #ifndef XA_MULTITHREADED
+ #define XA_MULTITHREADED 1
+ #endif
+@@ -3554,6 +3561,7 @@
+ 
+ class UniformGrid2
+ {
++	static constexpr uint32_t kCellsPerEdge = XA_GRID_CELLS_PER_EDGE; // splat2mesh
+ public:
+ 	// indices are optional.
+ 	void reset(ConstArrayView<Vector2> positions, ConstArrayView<uint32_t> indices = ConstArrayView<uint32_t>(), uint32_t reserveEdgeCount = 0)
+@@ -3709,6 +3717,11 @@
+ 		// Size grid to approximately one edge per cell in the largest dimension.
+ 		const Vector2 extentsSize(edgeExtents.max - edgeExtents.min);
+ 		m_cellSize = max(extentsSize.x, extentsSize.y) / (float)clamp(edgeCount, 32u, 512u);
++		// splat2mesh: upstream sizes the grid up to 512 x 512 cells, so building it (once per
++		// validity test, i.e. per face added to a chart) is dominated by clearing cells that no
++		// edge touches. Cap the cell count at a few cells per edge; the grid only narrows down
++		// candidate pairs, so the intersection result does not depend on its resolution.
++		m_cellSize = max(m_cellSize, sqrtf(extentsSize.x * extentsSize.y / (float)(kCellsPerEdge * edgeCount)));
+ 		if (m_cellSize <= 0.0f)
+ 			return false;
+ 		m_gridWidth = uint32_t(ceilf(extentsSize.x / m_cellSize));
+@@ -5351,6 +5364,19 @@
+ 		m_texcoords.resize(faceCount * 3);
+ 		if (m_facesLeft == 0)
+ 			return;
++		// splat2mesh: seed candidates in the order createChart picks them (largest planar region
++		// first, then lowest face index), so each seed is found from a cursor instead of a scan
++		// of every face. Faces in zero-area regions come last; upstream would fall back to face 0
++		// there even if it is already in a chart.
++		m_seedOrder.resize(faceCount);
++		for (uint32_t f = 0; f < faceCount; f++)
++			m_seedOrder[f] = f;
++		std::stable_sort(m_seedOrder.begin(), m_seedOrder.end(), [this](uint32_t a, uint32_t b) {
++			const float aa = m_planarCharts.regionArea(m_planarCharts.regionIdFromFace(a));
++			const float ab = m_planarCharts.regionArea(m_planarCharts.regionIdFromFace(b));
++			return (aa > 0.0f ? aa : 0.0f) > (ab > 0.0f ? ab : 0.0f);
++		});
++		m_seedCursor = 0;
+ 		// Create initial charts greedely.
+ 		placeSeeds(m_data.options.maxCost * 0.5f);
+ 		if (m_data.options.maxIterations == 0) {
+@@ -5415,46 +5441,55 @@
+ 	void growCharts(float threshold)
+ 	{
+ 		XA_PROFILE_START(clusteredChartsGrow)
+-		for (;;) {
+-			if (m_facesLeft == 0)
+-				break;
+-			// Get the single best candidate out of the chart best candidates.
+-			uint32_t bestFace = UINT32_MAX, bestChart = UINT32_MAX;
+-			float lowestCost = FLT_MAX;
+-			for (uint32_t i = 0; i < m_charts.size(); i++) {
+-				Chart *chart = m_charts[i];
+-				// Get the best candidate from the chart.
+-				// Cleanup any best candidates that have been claimed by another chart.
+-				uint32_t face = UINT32_MAX;
+-				float cost = FLT_MAX;
+-				for (;;) {
+-					if (chart->candidates.count() == 0)
+-						break;
+-					cost = chart->candidates.peekCost();
+-					face = chart->candidates.peekFace();
+-					if (!m_data.isFaceInChart.get(face))
+-						break;
+-					else {
+-						// Face belongs to another chart. Pop from queue so the next best candidate can be retrieved.
+-						chart->candidates.pop();
+-						face = UINT32_MAX;
+-					}
+-				}
+-				if (face == UINT32_MAX)
+-					continue; // No candidates for this chart.
+-				// See if best candidate overall.
+-				if (cost < lowestCost) {
+-					lowestCost = cost;
+-					bestFace = face;
+-					bestChart = i;
+-				}
++		// splat2mesh: upstream scanned every chart for its best candidate each time one face was
++		// added (faces x charts). Keep the charts in a heap keyed by (best cost, chart index)
++		// instead, which picks the same face in the same order (lowest cost, ties to the lowest
++		// chart index). Keys can go stale when another chart claims a chart's best face or the
++		// chart's candidates are rebuilt; each popped entry is checked against the chart's
++		// current best and re-queued if it differs.
++		struct Entry
++		{
++			float cost;
++			uint32_t chart;
++			bool operator<(const Entry &o) const { return cost > o.cost || (cost == o.cost && chart > o.chart); }
++		};
++		std::priority_queue<Entry> heap;
++		auto bestCandidate = [this](Chart *chart, float *cost, uint32_t *face) {
++			// Cleanup any best candidates that have been claimed by another chart.
++			while (chart->candidates.count() > 0) {
++				*cost = chart->candidates.peekCost();
++				*face = chart->candidates.peekFace();
++				if (!m_data.isFaceInChart.get(*face))
++					return true;
++				chart->candidates.pop();
+ 			}
+-			if (bestFace == UINT32_MAX || lowestCost > threshold)
+-				break;
+-			Chart *chart = m_charts[bestChart];
++			return false;
++		};
++		for (uint32_t i = 0; i < m_charts.size(); i++) {
++			float cost;
++			uint32_t face;
++			if (bestCandidate(m_charts[i], &cost, &face))
++				heap.push({ cost, i });
++		}
++		while (m_facesLeft > 0 && !heap.empty()) {
++			const Entry top = heap.top();
++			heap.pop();
++			Chart *chart = m_charts[top.chart];
++			float cost;
++			uint32_t face;
++			if (!bestCandidate(chart, &cost, &face))
++				continue; // No candidates for this chart.
++			if (cost != top.cost) {
++				heap.push({ cost, top.chart });
++				continue;
++			}
++			if (cost > threshold)
++				break;
+ 			chart->candidates.pop(); // Pop the selected candidate from the queue.
+-			if (!addFaceToChart(chart, bestFace))
+-				chart->failedPlanarRegions.push_back(m_planarCharts.regionIdFromFace(bestFace));
++			if (!addFaceToChart(chart, face))
++				chart->failedPlanarRegions.push_back(m_planarCharts.regionIdFromFace(face));
++			if (bestCandidate(chart, &cost, &face))
++				heap.push({ cost, top.chart });
+ 		}
+ 		XA_PROFILE_END(clusteredChartsGrow)
+ 	}
+@@ -5468,6 +5503,7 @@
+ 				m_data.isFaceInChart.unset(i);
+ 			m_faceCharts[i] = -1;
+ 		}
++		m_seedCursor = 0; // splat2mesh
+ 		m_facesLeft = 0;
+ 		for (uint32_t i = 0; i < faceCount; i++) {
+ 			if (!m_data.isFaceInChart.get(i))
+@@ -5518,6 +5554,21 @@
+ 	{
+ 		XA_PROFILE_START(clusteredChartsMerge)
+ 		const uint32_t chartCount = m_charts.size();
++		// splat2mesh: same merges in the same order as upstream, without the quadratic cost.
++		// Upstream zeroed three chartCount-sized arrays and scanned every chart for each chart
++		// on every restart of the loop; only neighbouring charts can pass the "must share a
++		// boundary" test, so only those are visited (in the same descending order) and reset.
++		// A merge attempt that failed is not retried until either chart has changed, since
++		// mergeChart's result depends only on the two charts' faces.
++		m_sharedBoundaryLengths.resize(chartCount);
++		m_sharedBoundaryLengths.zeroOutMemory();
++		m_sharedBoundaryLengthsNoSeams.resize(chartCount);
++		m_sharedBoundaryLengthsNoSeams.zeroOutMemory();
++		m_sharedBoundaryEdgeCountNoSeams.resize(chartCount);
++		m_sharedBoundaryEdgeCountNoSeams.zeroOutMemory();
++		m_mergeGeneration.resize(chartCount);
++		m_mergeGeneration.zeroOutMemory();
++		std::unordered_map<uint64_t, uint64_t> failedMerges; // (chart, chart2) -> generations at failure
+ 		// Merge charts progressively until there's none left to merge.
+ 		for (;;) {
+ 			bool merged = false;
+@@ -5526,12 +5577,7 @@
+ 				if (chart == nullptr)
+ 					continue;
+ 				float externalBoundaryLength = 0.0f;
+-				m_sharedBoundaryLengths.resize(chartCount);
+-				m_sharedBoundaryLengths.zeroOutMemory();
+-				m_sharedBoundaryLengthsNoSeams.resize(chartCount);
+-				m_sharedBoundaryLengthsNoSeams.zeroOutMemory();
+-				m_sharedBoundaryEdgeCountNoSeams.resize(chartCount);
+-				m_sharedBoundaryEdgeCountNoSeams.zeroOutMemory();
++				m_mergeNeighbors.clear();
+ 				const uint32_t faceCount = chart->faces.size();
+ 				for (uint32_t i = 0; i < faceCount; i++) {
+ 					const uint32_t f = chart->faces[i];
+@@ -5544,6 +5590,8 @@
+ 							if (neighborChart == -1)
+ 								externalBoundaryLength += l;
+ 							else if (m_charts[neighborChart] != chart) {
++								if (m_sharedBoundaryEdgeCountNoSeams[neighborChart] == 0)
++									m_mergeNeighbors.push_back((uint32_t)neighborChart);
+ 								if ((it.isSeam() && (isNormalSeam(it.edge()) || it.isTextureSeam()))) {
+ 									externalBoundaryLength += l;
+ 								} else {
+@@ -5555,9 +5603,9 @@
+ 						}
+ 					}
+ 				}
+-				for (int cc = chartCount - 1; cc >= 0; cc--) {
+-					if (cc == c)
+-						continue;
++				std::sort(m_mergeNeighbors.begin(), m_mergeNeighbors.end(), [](uint32_t a, uint32_t b) { return a > b; });
++				for (uint32_t n = 0; n < m_mergeNeighbors.size(); n++) {
++					const uint32_t cc = m_mergeNeighbors[n];
+ 					Chart *chart2 = m_charts[cc];
+ 					if (chart2 == nullptr)
+ 						continue;
+@@ -5588,30 +5636,48 @@
+ 						goto merge;
+ 					continue;
+ 				merge:
+-					if (!mergeChart(chart, chart2, m_sharedBoundaryLengthsNoSeams[cc]))
+-						continue;
++					{
++						const uint64_t key = (uint64_t(c) << 32) | cc;
++						const uint64_t generations = (uint64_t(m_mergeGeneration[c]) << 32) | m_mergeGeneration[cc];
++						auto failed = failedMerges.find(key);
++						if (failed != failedMerges.end() && failed->second == generations)
++							continue;
++						if (!mergeChart(chart, chart2, m_sharedBoundaryLengthsNoSeams[cc])) {
++							failedMerges[key] = generations;
++							continue;
++						}
++					}
++					m_mergeGeneration[c]++;
+ 					merged = true;
+ 					break;
+ 				}
++				for (uint32_t n = 0; n < m_mergeNeighbors.size(); n++) {
++					const uint32_t cc = m_mergeNeighbors[n];
++					m_sharedBoundaryLengths[cc] = 0.0f;
++					m_sharedBoundaryLengthsNoSeams[cc] = 0.0f;
++					m_sharedBoundaryEdgeCountNoSeams[cc] = 0;
++				}
+ 				if (merged)
+ 					break;
+ 			}
+ 			if (!merged)
+ 				break;
+ 		}
+-		// Remove deleted charts.
++		// Remove deleted charts. (splat2mesh: one remap pass instead of one face pass per deleted chart.)
++		m_mergeGeneration.resize(m_charts.size());
++		uint32_t kept = 0;
++		for (uint32_t c = 0; c < m_charts.size(); c++)
++			m_mergeGeneration[c] = m_charts[c] ? kept++ : UINT32_MAX;
++		const uint32_t faceChartCount = m_faceCharts.size();
++		for (uint32_t i = 0; i < faceChartCount; i++) {
++			if (m_faceCharts[i] >= 0) {
++				XA_DEBUG_ASSERT(m_mergeGeneration[m_faceCharts[i]] != UINT32_MAX);
++				m_faceCharts[i] = (int)m_mergeGeneration[m_faceCharts[i]];
++			}
++		}
+ 		for (int c = 0; c < int32_t(m_charts.size()); /*do not increment if removed*/) {
+ 			if (m_charts[c] == nullptr) {
+ 				m_charts.removeAt(c);
+-				// Update m_faceCharts.
+-				const uint32_t faceCount = m_faceCharts.size();
+-				for (uint32_t i = 0; i < faceCount; i++) {
+-					XA_DEBUG_ASSERT(m_faceCharts[i] != c);
+-					XA_DEBUG_ASSERT(m_faceCharts[i] <= int32_t(m_charts.size()));
+-					if (m_faceCharts[i] > c) {
+-						m_faceCharts[i]--;
+-					}
+-				}
+ 			} else {
+ 				m_charts[c]->id = c;
+ 				c++;
+@@ -5628,17 +5694,11 @@
+ 		chart->id = (int)m_charts.size();
+ 		m_charts.push_back(chart);
+ 		// Pick a face not used by any chart yet, belonging to the largest planar region.
+-		chart->seed = 0;
+-		float largestArea = 0.0f;
+-		for (uint32_t f = 0; f < m_data.mesh->faceCount(); f++) {
+-			if (m_data.isFaceInChart.get(f))
+-				continue;
+-			const float area = m_planarCharts.regionArea(m_planarCharts.regionIdFromFace(f));
+-			if (area > largestArea) {
+-				largestArea = area;
+-				chart->seed = f;
+-			}
+-		}
++		// (splat2mesh: faces only join charts between resets, so the cursor never needs to go back.)
++		while (m_seedCursor < m_seedOrder.size() && m_data.isFaceInChart.get(m_seedOrder[m_seedCursor]))
++			m_seedCursor++;
++		XA_DEBUG_ASSERT(m_seedCursor < m_seedOrder.size());
++		chart->seed = m_seedOrder[m_seedCursor];
+ 		addFaceToChart(chart, chart->seed);
+ 		// Grow the chart as much as possible within the given threshold.
+ 		for (;;) {
+@@ -6105,7 +6165,11 @@
+ 	Array<float> m_sharedBoundaryLengths;
+ 	Array<float> m_sharedBoundaryLengthsNoSeams;
+ 	Array<uint32_t> m_sharedBoundaryEdgeCountNoSeams;
++	Array<uint32_t> m_mergeNeighbors; // splat2mesh
++	Array<uint32_t> m_mergeGeneration; // splat2mesh: successful merges into each chart
+ #endif
++	Array<uint32_t> m_seedOrder; // splat2mesh
++	uint32_t m_seedCursor = 0; // splat2mesh
+ 	bool m_placingSeeds;
+ };
+ 

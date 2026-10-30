@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>splat2mesh</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body class="no-file">
+    <input id="file" type="file" accept=".ply" class="sr-only" tabindex="-1" />
+    <div id="viewport" class="absolute inset-0"></div>
+
+    <!-- Empty state: shown until a splat is loaded -->
+    <section id="empty" class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center p-4 md:pl-[364px]">
+      <label id="drop" for="file" tabindex="0" class="drop pointer-events-auto">
+        <span class="grid size-12 place-items-center rounded-full bg-white/5 text-accent ring-1 ring-white/10"><i data-lucide="upload" class="size-5"></i></span>
+        <span class="mt-4 text-[15px] font-medium text-ink">Drop a Gaussian splat</span>
+        <span class="mt-1 max-w-64 text-muted">A <code class="font-mono text-[12px]">.ply</code> file becomes a low-poly, textured GLB you can use in Blender, three.js or Figma.</span>
+        <span class="btn btn-primary mt-5">Choose file</span>
+        <span class="mt-3 text-[11px] text-faint">Runs on your GPU. Nothing is uploaded.</span>
+      </label>
+      <div id="samples" class="samples pointer-events-auto mt-4"></div>
+    </section>
+
+    <!-- Full-window drag overlay -->
+    <div id="dragOverlay" class="pointer-events-none fixed inset-3 z-50 hidden place-items-center rounded-2xl border-2 border-dashed border-accent/70 bg-canvas/70 backdrop-blur-sm">
+      <span class="text-[15px] font-medium text-ink">Drop to load</span>
+    </div>
+
+    <aside id="panel" class="panel">
+      <header class="flex items-center gap-2.5 px-4 pt-4 pb-3">
+        <span class="grid size-7 place-items-center rounded-lg bg-accent text-accent-ink"><i data-lucide="box" class="size-4"></i></span>
+        <div class="leading-tight">
+          <h1 class="text-[14px] font-semibold tracking-tight">splat2mesh</h1>
+          <p class="text-[11px] text-muted">Splat → textured mesh</p>
+        </div>
+      </header>
+
+      <div class="flex-1 overflow-y-auto px-4 pb-4">
+        <!-- 1 Source -->
+        <section class="step">
+          <h2 class="step-title"><span>1</span>Source</h2>
+          <div id="source" class="source">
+            <i data-lucide="file-box" class="size-4 shrink-0 text-muted"></i>
+            <div class="min-w-0 flex-1">
+              <div id="sourceName" class="truncate font-medium">No file</div>
+              <div id="sourceMeta" class="text-[11px] text-muted">Drop a .ply anywhere</div>
+            </div>
+            <label for="file" id="pick" class="btn btn-ghost btn-sm">Choose</label>
+          </div>
+        </section>
+
+        <form id="settings">
+          <!-- 2 Quality -->
+          <section class="step">
+            <h2 class="step-title"><span>2</span>Quality<button id="reset" type="button" class="ml-auto link" data-tip="Restore the default settings"><i data-lucide="rotate-ccw" class="size-3"></i>Reset</button></h2>
+            <div class="seg seg-4" id="presets" role="group" aria-label="Preset">
+              <button type="button" data-preset="draft">Draft</button>
+              <button type="button" data-preset="balanced">Balanced</button>
+              <button type="button" data-preset="detailed">Detailed</button>
+              <button type="button" data-preset="custom" disabled>Custom</button>
+            </div>
+            <div id="essentials" class="mt-3.5 grid gap-3.5"></div>
+            <details id="advanced" class="advanced">
+              <summary><i data-lucide="chevron-down" class="size-3.5 chev"></i>Advanced</summary>
+              <div id="advancedFields" class="grid gap-3.5 pt-3"></div>
+            </details>
+          </section>
+
+          <!-- 3 Convert -->
+          <section class="step">
+            <h2 class="step-title"><span>3</span>Convert</h2>
+            <button id="convert" type="submit" class="btn btn-primary btn-lg w-full" disabled>
+              <i data-lucide="sparkles" class="size-4"></i><span>Convert</span><kbd class="kbd">⌘↵</kbd>
+            </button>
+            <div id="progress" class="progress hidden">
+              <div class="flex items-baseline justify-between">
+                <span id="stageName" class="font-medium">Starting</span>
+                <span id="elapsed" class="font-mono text-[11px] text-muted">0.0 s</span>
+              </div>
+              <ol id="stages" class="stages"></ol>
+            </div>
+            <p id="dirty" class="mt-2 hidden text-[11px] text-warn">Settings changed. Convert again to update the mesh.</p>
+          </section>
+        </form>
+
+        <!-- 4 Export -->
+        <section class="step" id="exportStep">
+          <h2 class="step-title"><span>4</span>Export</h2>
+          <div id="stats" class="grid grid-cols-3 gap-1.5"></div>
+          <details id="moreStats" class="mt-2 hidden">
+            <summary class="link w-fit"><i data-lucide="chevron-down" class="size-3 chev"></i>All stats</summary>
+            <dl id="allStats" class="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 font-mono text-[11px] text-muted"></dl>
+          </details>
+          <div class="relative mt-3 flex">
+            <button id="dlFinal" class="btn btn-primary flex-1 rounded-r-none" disabled><i data-lucide="download" class="size-4"></i>Download GLB</button>
+            <button id="dlMenu" class="btn btn-primary rounded-l-none border-l border-accent-ink/20 px-2" aria-label="Export options" aria-expanded="false" disabled><i data-lucide="chevron-down" class="size-4 chev"></i></button>
+            <div id="exportOptions" class="popover hidden">
+              <label class="opt"><input id="unlit" type="checkbox" class="switch" checked /><span><b>Unlit material</b>Colours already contain the lighting. Smallest file.</span></label>
+              <label class="opt"><input id="compress" type="checkbox" class="switch" checked /><span><b>Compress geometry</b>meshopt. Needs Blender 5.2+; three.js needs MeshoptDecoder.</span></label>
+              <label class="opt"><input id="halfNormal" type="checkbox" class="switch" checked /><span><b>Half-size normal map</b>Lit exports only. About half the file size.</span></label>
+            </div>
+          </div>
+          <button id="dlDense" class="link mt-2" disabled><i data-lucide="download" class="size-3"></i>Dense mesh GLB</button>
+        </section>
+      </div>
+    </aside>
+
+    <!-- View switcher -->
+    <nav id="views" class="seg seg-float absolute top-3 left-1/2 -translate-x-1/2 md:left-[calc(50%+176px)]" aria-label="View">
+      <button data-mode="splats">Splats</button>
+      <button data-mode="dense" disabled>Dense</button>
+      <button data-mode="final" disabled>Final</button>
+    </nav>
+
+    <!-- Viewport toolbar -->
+    <div id="toolbar" class="toolbar">
+      <label class="tool" data-tip="Wireframe (final mesh)"><input id="wire" type="checkbox" class="sr-only" /><i data-lucide="grid-3x3" class="size-4"></i></label>
+      <label class="tool" data-tip="Lit preview"><input id="lit" type="checkbox" class="sr-only" /><i data-lucide="sun" class="size-4"></i></label>
+      <label class="tool" data-tip="Flip upside down"><input id="flip" type="checkbox" class="sr-only" /><i data-lucide="flip-vertical-2" class="size-4"></i></label>
+      <span class="mx-0.5 h-5 w-px bg-white/10"></span>
+      <button id="frameBtn" class="tool" data-tip="Frame object" aria-label="Frame object"><i data-lucide="focus" class="size-4"></i></button>
+    </div>
+
+    <!-- Log drawer -->
+    <div id="logDrawer" class="logdrawer">
+      <button id="logToggle" class="flex w-full items-center gap-2 px-3 py-2 text-left" aria-expanded="false">
+        <i data-lucide="terminal" class="size-3.5 text-muted"></i>
+        <span id="status" class="flex-1 truncate text-[12px] text-muted">Ready</span>
+        <i data-lucide="chevron-down" class="size-3.5 text-muted chev"></i>
+      </button>
+      <pre id="log" class="hidden"></pre>
+    </div>
+
+    <div id="toasts" class="fixed bottom-16 left-1/2 z-50 grid -translate-x-1/2 justify-items-center gap-2"></div>
+    <div id="tip" class="tooltip" role="tooltip"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
