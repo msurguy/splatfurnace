@@ -98,3 +98,7 @@ Surface stage design notes and checks: `docs/surface.md`.
 `third_party/xatlas-wasm/binding.cpp` is a small C interface (32-bit indices, charts computed
 once and packed repeatedly). `npm run build:xatlas` rebuilds `src/xatlas/xatlas-wasm.{mjs,wasm}`
 with Emscripten (`brew install emscripten`); the built files are checked in.
+
+## License
+
+MIT, see `LICENSE`. Vendored xatlas (`third_party/xatlas`) is MIT, (c) Jonathan Young.
