@@ -2,6 +2,9 @@
 
 Gaussian-splat `.ply` → low-poly, textured glTF, entirely in the browser on WebGPU.
 
+**Try it: https://msurguy.github.io/splatfurnace/** (needs a WebGPU browser: recent Chrome, Edge or Safari).
+Every push to `main` redeploys it (`.github/workflows/pages.yml`).
+
 ```bash
 npm install
 npm run dev      # http://localhost:5199 — splat PLYs in ~/Downloads appear as one-click samples
