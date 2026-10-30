@@ -1,4 +1,4 @@
-// Topology and quality check of a raw surface (spec §4, `s2m.checkSurface()`).
+// Topology and quality check of a raw surface (spec §4, `furnace.checkSurface()`).
 import type { RawSurface } from './gpu/surface';
 
 export function checkSurface(s: RawSurface) {

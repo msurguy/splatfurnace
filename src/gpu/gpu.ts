@@ -2,15 +2,17 @@ import { FIELD_WGSL } from './field.wgsl';
 import type { Buckets } from '../grid';
 
 export const S = { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 };
+const MAP_MODE_READ = 1; // GPUMapMode.READ, without relying on the global
 
 export interface Gpu {
   device: GPUDevice;
   maxBinding: number;
 }
 
-export async function initGpu(): Promise<Gpu> {
-  if (!navigator.gpu) throw new Error('WebGPU is not available in this browser.');
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+/** `gpu` defaults to the browser's navigator.gpu; the CLI passes Dawn's. */
+export async function initGpu(gpu: GPU | undefined = globalThis.navigator?.gpu): Promise<Gpu> {
+  if (!gpu) throw new Error('WebGPU is not available in this browser.');
+  const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) throw new Error('No WebGPU adapter.');
   const maxBinding = Math.min(adapter.limits.maxStorageBufferBindingSize, adapter.limits.maxBufferSize);
   const device = await adapter.requestDevice({
@@ -35,7 +37,7 @@ export async function readBack(device: GPUDevice, src: GPUBuffer, size: number):
   const enc = device.createCommandEncoder();
   enc.copyBufferToBuffer(src, 0, staging, 0, staging.size);
   device.queue.submit([enc.finish()]);
-  await staging.mapAsync(GPUMapMode.READ);
+  await staging.mapAsync(MAP_MODE_READ);
   const out = staging.getMappedRange().slice(0, size);
   staging.unmap();
   staging.destroy();

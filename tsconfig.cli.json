@@ -1,0 +1,11 @@
+{
+  // The CLI and its Node-only modules: node types instead of the DOM's, so browser code can't
+  // pick up Node APIs (tsconfig.json leaves these files out).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": ["@webgpu/types", "vite/client", "node"]
+  },
+  "include": ["src/cli", "src/xatlas/node.ts"],
+  "exclude": []
+}

@@ -3,7 +3,7 @@
 Upstream: https://github.com/jpcy/xatlas, commit `f700c7790aaa030e794b52ba7791a05c085faf0c`
 (2022-07-26), files `source/xatlas/xatlas.{cpp,h}` and `LICENSE` (MIT). `xatlas.h` is unchanged.
 
-`xatlas.cpp` carries the speed patches in `splat2mesh.patch`, each marked `splat2mesh` in the source.
+`xatlas.cpp` carries the speed patches in `splatfurnace.patch`, each marked `splatfurnace` in the source.
 None of them changes the result: on the idol mesh (30k triangles) the output vertices, UVs and
 indices hash identically to upstream (native build, `-DXA_MULTITHREADED=0`), while chart computation
 drops from 3.18 s to 0.92 s.
@@ -19,5 +19,5 @@ The WebAssembly build is about 1.8× slower than native. `src/xatlas/xatlas.ts` 
 meshes into spatial chunks (charting still grows faster than linearly), which brings the idol to
 ~0.8 s charting + ~0.5 s packing in the browser.
 
-To update upstream: copy the new files over, `patch -p1 < splat2mesh.patch` (resolve by hand if
+To update upstream: copy the new files over, `patch -p1 < splatfurnace.patch` (resolve by hand if
 needed), then `npm run build:xatlas`.

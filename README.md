@@ -1,4 +1,4 @@
-# splat2mesh
+# Splat Furnace
 
 Gaussian-splat `.ply` → low-poly, textured glTF, entirely in the browser on WebGPU.
 
@@ -8,7 +8,33 @@ npm run dev      # http://localhost:5199 — splat PLYs in ~/Downloads appear as
 ```
 
 The UI (`index.html`, `src/ui.ts`, `src/style.css`) is Tailwind v4 + vanilla TS: Draft / Balanced / Detailed presets, technical
-settings under *Advanced*, `⌘↵` to convert. `window.s2m` exposes the scripting hooks used below.
+settings under *Advanced*, `⌘↵` to convert. `window.furnace` exposes the scripting hooks used below.
+
+## CLI
+
+The same pipeline runs in Node on [Dawn](https://github.com/dawn-gpu/node-webgpu) (the `webgpu`
+package: prebuilt for macOS, Linux and Windows, x64 and arm64), with sharp (libwebp) in place of the browser's WebP encoder.
+
+```bash
+npm run build:cli          # dist-cli/index.js; `npm link` puts `splatfurnace` on your PATH
+splatfurnace scene.ply                                  # writes scene.glb next to it
+splatfurnace scans/ -o out/ --preset detailed --unlit   # every .ply in a directory
+splatfurnace "scans/**/*.ply" -o out/ --json -q > results.ndjson
+```
+
+Every *Advanced* setting has a flag (`--resolution`, `--triangles`, `--texture-size`, `--no-snap`, ...;
+`splatfurnace --help` lists them), on top of `--preset draft|balanced|detailed`. Export flags: `--unlit`,
+`--no-compress`, `--full-normal-map`, `--quality`, `--dense` (also writes `<name>-dense.glb`), `--flip`.
+Existing outputs are skipped unless `--force`. Files convert one after another on one GPU device;
+a failed file is reported and the batch continues (exit code 1). `--json` prints one line per file
+(`input`, `output`, `bytes`, `settings`, `stats`, `error`).
+
+CLI output matches the web app: backpack at defaults takes 5.4 s and is 1.69 MB lit / 0.90 MB unlit,
+and the CLI's unlit GLB scores the same 27.33 dB against the splats in `furnace.compare()` as the web export.
+
+Code layout: the pipeline takes its platform services as arguments: `initGpu(gpu)`, `convert(..., { unwrap })`
+(`xatlas/browser.ts` Web Worker vs `xatlas/node.ts` in-thread), `writeGlb({ encode })`. `src/cli/` holds
+the Node side, typechecked by `tsconfig.cli.json` so browser code can't use Node APIs.
 
 ## Pipeline
 
@@ -47,13 +73,13 @@ For lit files `checkExport({ unlit: false })` reports `litPsnr`: lit renders of 
 lit renders of the in-app mesh. Idol: 43.4 dB with the full-size normal map, 39.5 dB at half
 size (about 35 dB with no normal map at all).
 
-`s2m.checkExport()` exports, reloads the GLB with three's `GLTFLoader`, and runs `compare()` on it.
+`furnace.checkExport()` exports, reloads the GLB with three's `GLTFLoader`, and runs `compare()` on it.
 Round-trip PSNR stays within 0.05 dB of the in-memory mesh (options: `{ unlit, compress, halfNormalMap, quality }`). `scripts/validate-glb.mjs` (Khronos
 validator) and `scripts/blender-import-check.py` (headless Blender import) check exported files.
 
 ## Measured (Apple GPU, defaults: 320 res, 30k tris, 2048² texture)
 
-`s2m.compare()` renders the splats (via Spark) and the mesh from 8 orbit cameras and reports PSNR over covered pixels.
+`furnace.compare()` renders the splats (via Spark) and the mesh from 8 orbit cameras and reports PSNR over covered pixels.
 
 | File | Time | Final PSNR | Dense PSNR | Without snapping |
 | --- | --- | --- | --- | --- |

@@ -5,11 +5,13 @@ import { parseSplatPly, type Splats } from './ply';
 import { initGpu, type Gpu } from './gpu/gpu';
 import { convert, DEFAULTS, type Result, type Settings } from './pipeline';
 import { Viewer, type ViewMode } from './viewer';
-import type { ExportOptions } from './export';
+import { toExportInput, writeGlb, type ExportOptions } from './export';
+import { runWorker } from './xatlas/browser';
 import { lastRawSurface } from './gpu/surface';
 import { checkSurface } from './surface-check';
 
-import { bindValueInputs, icons, initTooltips, matchPreset, PRESETS, renderFields, renderStages, stageFromLog, syncFields, toast, type Preset } from './ui';
+import { bindValueInputs, icons, initTooltips, renderFields, renderStages, stageFromLog, syncFields, toast } from './ui';
+import { matchPreset, PRESETS, type Preset } from './presets';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 renderFields($('#essentials'), $('#advancedFields'));
@@ -190,7 +192,7 @@ async function run(overrides: Partial<Settings> = {}) {
   try {
     gpu ??= await initGpu();
     log(`Converting ${sourceName}`, true);
-    result = await convert(gpu, splats, settings, log);
+    result = await convert(gpu, splats, settings, log, { unwrap: runWorker });
     viewer.setResult(result.dense, result.final, result.bake.color, result.bake.normal, settings.textureSize);
     setResult(result, settings);
     setMode('final');
@@ -270,8 +272,14 @@ dlMenu.onclick = (e) => {
 };
 document.addEventListener('click', (e) => { if (!exportOptions.contains(e.target as Node)) closeExportMenu(); });
 
+async function exportGlb(which: 'final' | 'dense', options: ExportOptions): Promise<Blob> {
+  if (!result) throw new Error('Nothing to export yet.');
+  const glb = await writeGlb(toExportInput(result, which, { ...options, flip: $<HTMLInputElement>('#flip').checked }));
+  return new Blob([glb as Uint8Array<ArrayBuffer>], { type: 'model/gltf-binary' });
+}
+
 async function download(which: 'final' | 'dense') {
-  const blob = await viewer.exportGlb(which, {
+  const blob = await exportGlb(which, {
     unlit: $<HTMLInputElement>('#unlit').checked,
     compress: $<HTMLInputElement>('#compress').checked,
     halfNormalMap: $<HTMLInputElement>('#halfNormal').checked,
@@ -336,7 +344,7 @@ async function compare(mode: 'final' | 'dense' = 'final', views = 8) {
  */
 async function checkExport(which: 'final' | 'dense' = 'final', options: Partial<ExportOptions> = {}) {
   const t0 = performance.now();
-  const blob = await viewer.exportGlb(which, { unlit: true, compress: true, ...options });
+  const blob = await exportGlb(which, { unlit: true, compress: true, ...options });
   const ms_export = Math.round(performance.now() - t0);
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.parseAsync(await blob.arrayBuffer(), '');
@@ -372,7 +380,7 @@ async function checkExport(which: 'final' | 'dense' = 'final', options: Partial<
 
 // Scripting hook for automated checks from DevTools.
 Object.assign(window, {
-  s2m: {
+  furnace: {
     loadSample,
     run,
     compare,
@@ -384,7 +392,7 @@ Object.assign(window, {
       if (!raw) throw new Error('No surface yet; run a conversion first.');
       return checkSurface(raw);
     },
-    exportGlb: (which: 'final' | 'dense', options: Partial<ExportOptions> = {}) => viewer.exportGlb(which, { unlit: true, compress: true, ...options }),
+    exportGlb: (which: 'final' | 'dense', options: Partial<ExportOptions> = {}) => exportGlb(which, { unlit: true, compress: true, ...options }),
     checkExport,
   },
 });

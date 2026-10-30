@@ -30,7 +30,7 @@ const FLOOD_BATCH = 4; // flood dispatches between convergence checks
 const MAX_FLOOD_PASSES = 4096;
 
 let last: RawSurface | null = null;
-/** The most recent raw surface, for `s2m.checkSurface()`. */
+/** The most recent raw surface, for `furnace.checkSurface()`. */
 export const lastRawSurface = () => last;
 
 let tableData: Uint32Array | null = null;

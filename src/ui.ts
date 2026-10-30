@@ -1,5 +1,5 @@
 import { createIcons, Box, Check, ChevronDown, CircleAlert, Download, FileBox, FlipVertical2, Focus, Grid3x3, Info, RotateCcw, Sparkles, Sun, Terminal, Upload } from 'lucide';
-import { DEFAULTS, type Settings } from './pipeline';
+import type { Settings } from './pipeline';
 
 export const ICONS = { Box, Check, ChevronDown, CircleAlert, Download, FileBox, FlipVertical2, Focus, Grid3x3, Info, RotateCcw, Sparkles, Sun, Terminal, Upload };
 export const icons = (root: Element | Document = document) => createIcons({ icons: ICONS, root, attrs: { 'aria-hidden': 'true' } });
@@ -90,21 +90,6 @@ export function bindValueInputs(form: HTMLFormElement, onChange: () => void) {
     });
     out.addEventListener('focus', () => out.select());
   }
-}
-
-// ---------------------------------------------------------------- presets
-export type Preset = 'draft' | 'balanced' | 'detailed';
-export const PRESETS: Record<Preset, Settings> = {
-  draft: { ...DEFAULTS, resolution: 224, targetTriangles: 15000, textureSize: 1024, normalMap: false },
-  balanced: DEFAULTS,
-  detailed: { ...DEFAULTS, resolution: 448, targetTriangles: 80000, textureSize: 4096 },
-};
-
-export function matchPreset(s: Settings): Preset | 'custom' {
-  for (const [name, p] of Object.entries(PRESETS) as [Preset, Settings][]) {
-    if ((Object.keys(p) as Key[]).every((k) => Math.abs(Number(p[k]) - Number(s[k])) < 1e-9)) return name;
-  }
-  return 'custom';
 }
 
 // ---------------------------------------------------------------- progress

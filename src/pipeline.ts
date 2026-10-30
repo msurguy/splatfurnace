@@ -4,7 +4,7 @@ import { createFieldSampler, type Gpu } from './gpu/gpu';
 import { extractSurface } from './gpu/surface';
 import { computeNormals, removeIslands, smoothScalar, taubinSmooth, vertexNeighbors, type Mesh } from './mesh';
 import { bakeTextures, buildAtlas, simplify, uvCoverage, type Atlased, type BakeResult } from './bake';
-import { buildChartAtlas } from './unwrap';
+import { buildChartAtlas, type UnwrapRunner } from './unwrap';
 
 export interface Settings {
   resolution: number;
@@ -38,6 +38,11 @@ export const DEFAULTS: Settings = {
   chartAtlas: true,
 };
 
+/** Platform services the pipeline needs: where xatlas runs (browser worker or in-thread in Node). */
+export interface Env {
+  unwrap: UnwrapRunner;
+}
+
 export interface Result {
   grid: Grid;
   dense: Mesh; // world units, vertex colours
@@ -49,7 +54,7 @@ export interface Result {
 const BUCKET = 4; // voxels per spatial bucket edge
 const MAX_EXTENT = 48; // voxels; larger splats are treated as background
 
-export async function convert(gpu: Gpu, splats: Splats, s: Settings, log: (m: string) => void): Promise<Result> {
+export async function convert(gpu: Gpu, splats: Splats, s: Settings, log: (m: string) => void, env: Env): Promise<Result> {
   const stats: Record<string, number | string> = {};
   const t0 = performance.now();
   let tStage = t0;
@@ -134,7 +139,7 @@ export async function convert(gpu: Gpu, splats: Splats, s: Settings, log: (m: st
     let atlas: Atlased | null = null;
     if (s.chartAtlas) {
       try {
-        const charts = await buildChartAtlas(simp.mesh, s.textureSize);
+        const charts = await buildChartAtlas(simp.mesh, s.textureSize, env.unwrap);
         stats.atlas = `charts: ${charts.charts}`;
         atlas = charts;
       } catch (err) {

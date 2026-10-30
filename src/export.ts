@@ -1,10 +1,11 @@
 // GLB writer: builds the glTF directly from the mesh data and baked texels with glTF-Transform,
 // so textures are encoded once (WebP) and geometry can be welded, quantized and meshopt-compressed.
 // Targets Blender 5.2+, three.js and Babylon.js; with `compress` off the file also opens in Blender 4.2+.
-import { Document, WebIO, type mat4, type Texture } from '@gltf-transform/core';
+import { Document, Logger, WebIO, type mat4, type Texture } from '@gltf-transform/core';
 import { EXTMeshoptCompression, EXTTextureWebP, KHRMaterialsUnlit, KHRMeshQuantization } from '@gltf-transform/extensions';
 import { meshopt, quantize, reorder, weld } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
+import type { Result } from './pipeline';
 
 export interface ExportImage {
   rgba: Uint8Array | Uint8ClampedArray; // size x size, row 0 = v 0 (glTF: top of the image)
@@ -26,9 +27,12 @@ export interface ExportInput {
   compress: boolean; // EXT_meshopt_compression (needs a meshopt decoder; Blender 5.2+)
   quality?: { color?: number; normal?: number }; // WebP quality 0..1
   normalSize?: number; // downsample the normal map to this size (power-of-two fraction of its size)
+  encode?: WebpEncoder; // default: the browser's OffscreenCanvas (encodeWebp); the CLI passes sharp
 }
 
-/** Export settings exposed to the UI and the s2m scripting hook. */
+export type WebpEncoder = (img: ExportImage, quality: number) => Promise<Uint8Array>;
+
+/** Export settings exposed to the UI and the furnace scripting hook. */
 export type ExportOptions = Pick<ExportInput, 'unlit' | 'compress' | 'quality'> & { halfNormalMap?: boolean };
 
 // WebP qualities chosen by measurement; see README "Export". Lower colour quality darkens
@@ -79,7 +83,7 @@ export function downsampleNormals(img: ExportImage, size: number): ExportImage {
  * Drop ICC/EXIF/XMP chunks. Browsers embed an sRGB ICC profile, but glTF textures must not
  * carry colour-space information (a colour-managed decoder could alter normal-map values).
  */
-function stripWebpMetadata(webp: Uint8Array): Uint8Array {
+export function stripWebpMetadata(webp: Uint8Array): Uint8Array {
   const view = new DataView(webp.buffer, webp.byteOffset, webp.byteLength);
   const chunks: { id: string; start: number; end: number }[] = [];
   for (let o = 12; o + 8 <= webp.length;) {
@@ -107,8 +111,35 @@ function stripWebpMetadata(webp: Uint8Array): Uint8Array {
   return out;
 }
 
+/**
+ * GLB input for a conversion result, as the viewer shows it: `flip` rotates 180 degrees about X
+ * (Viewer.setFlip), dense vertex colours go to linear, and `halfNormalMap` halves the normal map.
+ */
+export function toExportInput(result: Result, which: 'final' | 'dense', { flip, halfNormalMap = true, ...options }: ExportOptions & { flip: boolean }): ExportInput {
+  const s = flip ? -1 : 1;
+  const matrix = [1, 0, 0, 0, 0, s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1];
+  if (which === 'dense') {
+    const { positions, normals, indices, colors } = result.dense;
+    return { name: 'splatfurnace-dense', matrix, positions, normals, indices, colors: colors?.map(srgbToLinear), ...options };
+  }
+  const { positions, normals, uvs, tangents } = result.final;
+  const size = Math.round(Math.sqrt(result.bake.color.length / 4));
+  const normal = result.bake.normal;
+  return {
+    name: 'splatfurnace', matrix, positions, normals, uvs, tangents,
+    colorTexture: { rgba: result.bake.color, size },
+    normalTexture: normal ? { rgba: normal, size } : undefined,
+    normalSize: halfNormalMap && normal ? size / 2 : undefined,
+    ...options,
+  };
+}
+
+export function srgbToLinear(c: number) {
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
 export async function writeGlb(input: ExportInput): Promise<Uint8Array> {
-  const doc = new Document();
+  const doc = new Document().setLogger(new Logger(Logger.Verbosity.WARN)); // no per-step info logs
   const buffer = doc.createBuffer();
   const prim = doc.createPrimitive();
   const attr = (name: string, array: Float32Array, type: 'VEC2' | 'VEC3' | 'VEC4') =>
@@ -124,7 +155,7 @@ export async function writeGlb(input: ExportInput): Promise<Uint8Array> {
   const material = doc.createMaterial(input.name).setRoughnessFactor(0.9).setMetallicFactor(0);
   const texture = async (img: ExportImage, quality: number, label: string): Promise<Texture> => {
     doc.createExtension(EXTTextureWebP).setRequired(true);
-    return doc.createTexture(label).setImage(await encodeWebp(img, quality)).setMimeType('image/webp');
+    return doc.createTexture(label).setImage(await (input.encode ?? encodeWebp)(img, quality)).setMimeType('image/webp');
   };
   if (input.colorTexture) material.setBaseColorTexture(await texture(input.colorTexture, input.quality?.color ?? COLOR_QUALITY, 'baseColor'));
   if (input.normalTexture && !input.unlit) {

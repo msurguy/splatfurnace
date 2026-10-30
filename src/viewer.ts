@@ -4,7 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import type { Mesh } from './mesh';
 import type { Atlased } from './bake';
-import { writeGlb, type ExportImage, type ExportOptions } from './export';
+import { srgbToLinear } from './export';
 
 export type ViewMode = 'splats' | 'dense' | 'final';
 
@@ -99,7 +99,7 @@ export class Viewer {
     fg.setAttribute('uv', new THREE.BufferAttribute(final.uvs, 2));
     fg.setAttribute('tangent', new THREE.BufferAttribute(final.tangents, 4));
     this.final = new THREE.Mesh(fg, new THREE.MeshBasicMaterial());
-    this.final.name = 'splat2mesh';
+    this.final.name = 'splatfurnace';
     this.wire = new THREE.LineSegments(new THREE.WireframeGeometry(fg), new THREE.LineBasicMaterial({ color: 0x9be15d, transparent: true, opacity: 0.35 }));
     this.root.add(this.dense, this.final, this.wire);
     this.applyMaterials();
@@ -160,33 +160,6 @@ export class Viewer {
     return ctx.getImageData(0, 0, width, height);
   }
 
-  async exportGlb(which: 'final' | 'dense', { unlit, compress, quality, halfNormalMap = true }: ExportOptions): Promise<Blob> {
-    const src = which === 'final' ? this.final : this.dense;
-    if (!src) throw new Error('Nothing to export yet.');
-    const g = src.geometry;
-    const array = (name: string) => g.getAttribute(name)?.array as Float32Array | undefined;
-    const image = (t: THREE.DataTexture | null): ExportImage | undefined =>
-      t ? { rgba: t.image.data as Uint8Array, size: t.image.width } : undefined;
-    this.root.updateMatrixWorld();
-    const glb = await writeGlb({
-      name: which === 'final' ? 'splat2mesh' : 'splat2mesh-dense',
-      matrix: this.root.matrixWorld.toArray(),
-      positions: array('position')!,
-      normals: array('normal'),
-      uvs: array('uv'),
-      tangents: array('tangent'),
-      colors: which === 'dense' ? array('color') : undefined,
-      indices: g.index ? (g.index.array as Uint32Array) : undefined,
-      colorTexture: which === 'final' ? image(this.colorTex) : undefined,
-      normalTexture: which === 'final' ? image(this.normalTex) : undefined,
-      normalSize: halfNormalMap && this.normalTex ? this.normalTex.image.width / 2 : undefined,
-      unlit,
-      compress,
-      quality,
-    });
-    return new Blob([glb as Uint8Array<ArrayBuffer>], { type: 'model/gltf-binary' });
-  }
-
   /**
    * Temporarily stand `object` in for the final mesh, e.g. an exported GLB loaded back for a
    * round-trip check. It goes on the scene, not the root: exports already carry the root transform.
@@ -236,8 +209,4 @@ function dataTexture(data: Uint8ClampedArray, size: number, colorSpace: THREE.Co
   t.anisotropy = 8;
   t.needsUpdate = true;
   return t;
-}
-
-function srgbToLinear(c: number) {
-  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 }

@@ -28,12 +28,12 @@ from outside, with normals pointing from solid to empty.
 | 14 | Unique shared vertices with **stream compaction**: each grid point owns its +x/+y/+z edges. A two-level exclusive prefix sum over per-point (vertex, triangle) counts gives output offsets: per-block reduce, one-workgroup scan of block sums, then recompute and local scan in the emit passes. | Harris, Sengupta, Owens, GPU Gems 3 ch. 39. |
 | 15 | Each cell's corner configuration is computed once into a byte buffer, which is read by the count and emit passes. | Own reasoning. |
 | 16 | Output buffers are allocated after reading back the exact totals. Every buffer is checked against `gpu.maxBinding` with an error naming **Resolution**. Every buffer is tracked and destroyed in a `finally` block. | Own reasoning. |
-| 17 | `s2m.checkSurface()` sorts undirected-edge keys (with a direction flag) to count boundary, non-manifold and same-direction ("flipped") edges. Degenerate = triangle area ≤ 1e-6 voxel². | Own reasoning. |
+| 17 | `furnace.checkSurface()` sorts undirected-edge keys (with a direction flag) to count boundary, non-manifold and same-direction ("flipped") edges. Degenerate = triangle area ≤ 1e-6 voxel². | Own reasoning. |
 | 18 | **Why not linear interpolation.** The first version interpolated D linearly along edges, so vertices sat exactly on the trilinear interpolant. With snapping and smoothing off, lit grey renders of the idol's flat base showed clear horizontal bands a few voxels apart. Their spacing shrank at resolution 448, so they come from the grid, not the data. D is a steep, non-linear sum of Gaussians across the surface, so the linear crossing error depends on the surface's sub-voxel offset. On a gently tilted plane that offset drifts slowly, and the error shows as periodic terraces. The Catmull-Rom crossing (#9) removed the banding in the Dense mesh view and left only a very faint residual on the raw, unsmoothed stage output. | Own reasoning and measurement. |
 
 ## Measured (Apple Silicon, Chrome, WebGPU)
 
-Run in the console with `s2m.loadSample(…)`, `s2m.run()`, `s2m.compare('dense' | 'final')` and `s2m.checkSurface()`.
+Run in the console with `furnace.loadSample(…)`, `furnace.run()`, `furnace.compare('dense' | 'final')` and `furnace.checkSurface()`.
 
 | Metric | Target backpack | backpack | Target idol | idol |
 | --- | --- | --- | --- | --- |
