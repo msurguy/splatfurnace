@@ -19,7 +19,7 @@ The same pipeline runs in Node on [Dawn](https://github.com/dawn-gpu/node-webgpu
 package: prebuilt for macOS, Linux and Windows, x64 and arm64), with sharp (libwebp) in place of the browser's WebP encoder.
 
 ```bash
-npm run build:cli          # dist-cli/index.js; `npm link` puts `splatfurnace` on your PATH
+npm install -g splatfurnace   # Node 22.4+; or run once with `npx splatfurnace scene.ply`
 splatfurnace scene.ply                                  # writes scene.glb next to it
 splatfurnace scans/ -o out/ --preset detailed --unlit   # every .ply in a directory
 splatfurnace "scans/**/*.ply" -o out/ --json -q > results.ndjson
@@ -34,6 +34,9 @@ a failed file is reported and the batch continues (exit code 1). `--json` prints
 
 CLI output matches the web app: backpack at defaults takes 5.4 s and is 1.69 MB lit / 0.90 MB unlit,
 and the CLI's unlit GLB scores the same 27.33 dB against the splats in `furnace.compare()` as the web export.
+
+From a checkout: `npm run build:cli` builds `dist-cli/index.js`, and `npm link` puts it on your PATH.
+`npm publish` builds it first (`prepublishOnly`); the package holds only `dist-cli/`.
 
 Code layout: the pipeline takes its platform services as arguments: `initGpu(gpu)`, `convert(..., { unwrap })`
 (`xatlas/browser.ts` Web Worker vs `xatlas/node.ts` in-thread), `writeGlb({ encode })`. `src/cli/` holds
