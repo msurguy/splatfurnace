@@ -1,9 +1,20 @@
 # Splat Furnace
 
-Gaussian-splat `.ply` → low-poly, textured glTF, entirely in the browser on WebGPU.
+Gaussian-splat `.ply` → low-poly, textured glTF on WebGPU, in the browser or from the command line.
 
 **Try it: https://msurguy.github.io/splatfurnace/** (needs a WebGPU browser: recent Chrome, Edge or Safari).
 Every push to `main` redeploys it (`.github/workflows/pages.yml`).
+
+![Splat Furnace converting a 262k-splat figurine into a 30k-triangle textured mesh](https://raw.githubusercontent.com/msurguy/splatfurnace/main/docs/images/app.webp)
+
+Converted meshes at the default *Balanced* preset (30k triangles, 2K colour and normal maps), with the wireframe on:
+
+<p>
+  <img src="https://raw.githubusercontent.com/msurguy/splatfurnace/main/docs/images/idol-wireframe.webp" width="49%" alt="Wireframe of the converted figurine: 262k splats to 30k triangles, 1.47 MB GLB">
+  <img src="https://raw.githubusercontent.com/msurguy/splatfurnace/main/docs/images/backpack-wireframe.webp" width="49%" alt="Wireframe of the converted backpack: 262k splats to 30k triangles, 1.69 MB GLB">
+</p>
+
+Figurine (left): 262k splats → 30k triangles, 1.47 MB GLB in 5 s. Backpack (right): 262k splats → 30k triangles, 1.69 MB GLB in 5.4 s.
 
 ```bash
 npm install
