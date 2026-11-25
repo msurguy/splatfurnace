@@ -1,7 +1,7 @@
-import { createIcons, Box, Check, ChevronDown, CircleAlert, Download, FileBox, FlipVertical2, Focus, Grid3x3, Info, RotateCcw, Sparkles, Sun, Terminal, Upload } from 'lucide';
+import { createIcons, ArrowUpRight, Box, Check, ChevronDown, CircleAlert, CodeXml, Download, FileBox, FlipVertical2, Focus, Grid3x3, Info, RotateCcw, Sparkles, Sun, Terminal, Upload } from 'lucide';
 import type { Settings } from './pipeline';
 
-export const ICONS = { Box, Check, ChevronDown, CircleAlert, Download, FileBox, FlipVertical2, Focus, Grid3x3, Info, RotateCcw, Sparkles, Sun, Terminal, Upload };
+export const ICONS = { ArrowUpRight, Box, Check, ChevronDown, CircleAlert, CodeXml, Download, FileBox, FlipVertical2, Focus, Grid3x3, Info, RotateCcw, Sparkles, Sun, Terminal, Upload };
 export const icons = (root: Element | Document = document) => createIcons({ icons: ICONS, root, attrs: { 'aria-hidden': 'true' } });
 
 // ---------------------------------------------------------------- settings fields
