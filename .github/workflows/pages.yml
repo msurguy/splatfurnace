@@ -1,9 +1,11 @@
-# Builds the web app and publishes it to GitHub Pages on every push to main.
+# The web app now lives at https://makssurguy.com/labs/splatfurnace/ (built by that site's deploy.sh).
+# GitHub Pages only serves a redirect there, so old links keep working.
 name: Pages
 
 on:
   push:
     branches: [main]
+    paths: [redirect/**, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -20,17 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      # Project pages are served from /<repo>/.
-      - run: npx vite build --base=/${{ github.event.repository.name }}/
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: dist
+          path: redirect
 
   deploy:
     needs: build

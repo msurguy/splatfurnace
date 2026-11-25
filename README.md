@@ -2,7 +2,7 @@
 
 Gaussian-splat `.ply` → low-poly, textured glTF on WebGPU, in the browser or from the command line.
 
-**Try it: https://msurguy.github.io/splatfurnace/** (needs a WebGPU browser: recent Chrome, Edge or Safari).
+**Try it: https://makssurguy.com/labs/splatfurnace/** (needs a WebGPU browser: recent Chrome, Edge or Safari).
 Every push to `main` redeploys it (`.github/workflows/pages.yml`).
 
 ![Splat Furnace converting a 262k-splat figurine into a 30k-triangle textured mesh](https://raw.githubusercontent.com/msurguy/splatfurnace/main/docs/images/app.webp)

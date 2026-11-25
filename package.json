@@ -14,7 +14,7 @@
     "photogrammetry",
     "cli"
   ],
-  "homepage": "https://msurguy.github.io/splatfurnace/",
+  "homepage": "https://makssurguy.com/labs/splatfurnace/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/msurguy/splatfurnace.git"
@@ -34,7 +34,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && vite build && npm run build:cli",
+    "build": "npm run typecheck && npm run build:cli && vite build",
     "build:cli": "vite build --config vite.cli.config.ts",
     "cli": "npm run build:cli && node dist-cli/index.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.cli.json",
