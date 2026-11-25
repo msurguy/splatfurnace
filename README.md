@@ -18,8 +18,11 @@ Figurine (left): 262k splats → 30k triangles, 1.47 MB GLB in 5 s. Backpack (ri
 
 ```bash
 npm install
-npm run dev      # http://localhost:5199 — splat PLYs in ~/Downloads appear as one-click samples
+npm run dev      # http://localhost:5199
 ```
+
+Two sample splats ship in `public/samples/` (`backpack.ply`, `idol.ply`, both 262k splats) and appear as
+one-click buttons on the empty state, locally and on the Pages site.
 
 The UI (`index.html`, `src/ui.ts`, `src/style.css`) is Tailwind v4 + vanilla TS: Draft / Balanced / Detailed presets, technical
 settings under *Advanced*, `⌘↵` to convert. `window.furnace` exposes the scripting hooks used below.

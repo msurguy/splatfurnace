@@ -159,23 +159,22 @@ document.addEventListener('drop', async (e) => {
   await load(await f.arrayBuffer(), f.name);
 });
 
+// Bundled samples (public/samples/), shown on the empty state everywhere.
+const SAMPLES = ['backpack.ply', 'idol.ply'];
+
 async function loadSample(name: string) {
-  const res = await fetch(`/__samples/${encodeURIComponent(name)}`);
+  log(`Downloading ${name}`, true);
+  const res = await fetch(`${import.meta.env.BASE_URL}samples/${name}`);
   if (!res.ok) throw new Error(`Could not fetch ${name}`);
   await load(await res.arrayBuffer(), name);
 }
 
-if (import.meta.env.DEV) {
-  fetch('/__samples').then((r) => r.json()).then((names: string[]) => {
-    const box = $('#samples');
-    for (const n of names) {
-      const b = document.createElement('button');
-      b.textContent = n.replace(/\.ply$/i, '');
-      b.title = `~/Downloads/${n}`;
-      b.onclick = () => void loadSample(n);
-      box.appendChild(b);
-    }
-  }).catch(() => {});
+for (const name of SAMPLES) {
+  const b = document.createElement('button');
+  b.textContent = name.replace(/\.ply$/i, '');
+  b.title = `Sample splat · ${name}`;
+  b.onclick = () => void loadSample(name).catch((err) => toast((err as Error).message, 'error'));
+  $('#samples').appendChild(b);
 }
 
 // ---------------------------------------------------------------- convert

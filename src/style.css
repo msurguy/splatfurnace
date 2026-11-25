@@ -142,8 +142,8 @@
   .drop {
     @apply flex w-full max-w-sm cursor-pointer flex-col items-center rounded-2xl border border-dashed border-white/15 bg-surface/70 px-8 py-10 text-center shadow-2xl shadow-black/30 backdrop-blur-xl transition duration-150 hover:border-accent/50 hover:bg-surface/90;
   }
-  .samples { @apply flex max-w-sm flex-wrap justify-center gap-1.5; }
-  .samples:empty { display: none; }
+  .samples { @apply flex max-w-sm flex-wrap items-center justify-center gap-1.5; }
+  .samples span { @apply mr-1 text-[12px] text-faint; }
   .samples button { @apply rounded-full border border-line bg-surface/80 px-3 py-1 text-[12px] text-muted backdrop-blur transition hover:border-white/20 hover:text-ink; }
 
   /* Viewport chrome */
